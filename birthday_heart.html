@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>徐梦琴 生日快乐 ❤️</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Microsoft YaHei', 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        #container {
+            position: relative;
+            width: 640px;
+            height: 640px;
+            background: #0a0a2a;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="heartCanvas"></canvas>
+        <canvas id="textCanvas"></canvas>
+        <div id="loading">初始化中...</div>
+    </div>
+
+    <script>
+        // ============= 常量定义 =============
+        const CANVAS_WIDTH = 640;
+        const CANVAS_HEIGHT = 640;
+        const CANVAS_CENTER_X = CANVAS_WIDTH / 2;
+        const CANVAS_CENTER_Y = CANVAS_HEIGHT / 2;
+        const IMAGE_ENLARGE = 11;
+        const HEART_COLOR = "#Fd799f";
+        const FLASH_TEXT = "徐梦琴 生日快乐";
+
+        // ============= 核心函数 =============
+        function heart_function(t, shrink_ratio = IMAGE_ENLARGE) {
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = -(15 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+            
+            const scaled_x = x * shrink_ratio;
+            const scaled_y = y * shrink_ratio;
+            
+            return {
+                x: Math.floor(scaled_x + CANVAS_CENTER_X),
+                y: Math.floor(scaled_y + CANVAS_CENTER_Y)
+            };
+        }
+
+        function scatter_inside(x, y, beta = 0.15) {
+            const ratio_x = -beta * Math.log(Math.random());
+            const ratio_y = -beta * Math.log(Math.random());
+            
+            const dx = ratio_x * (x - CANVAS_CENTER_X);
+            const dy = ratio_y * (y - CANVAS_CENTER_Y);
+            
+            return {
+                x: x - dx,
+                y: y - dy
+            };
+        }
+
+        function shrink(x, y, ratio) {
+            const force = -1 / Math.pow(Math.pow(x - CANVAS_CENTER_X, 2) + Math.pow(y - CANVAS_CENTER_Y, 2), 0.6);
+            const dx = ratio * force * (x - CANVAS_CENTER_X);
+            const dy = ratio * force * (y - CANVAS_CENTER_Y);
+            
+            return {
+                x: x - dx,
+                y: y - dy
+            };
+        }
+
+        function curve(p) {
+            return 2 * (2 * Math.sin(4 * p)) / (2 * Math.PI);
+        }
+
+        // ============= Heart类 =============
+        class Heart {
+            constructor(generate_frame = 20) {
+                this._points = new Set();
+                this._edge_diffusion_points = new Set();
+                this._center_diffusion_points = new Set();
+                this.all_points = {};
+                this.generate_frame = generate_frame;
+                this.random_halo = 1000;
+                
+                this.build(2000);
+                
+                for (let frame = 0; frame < generate_frame; frame++) {
+                    this.calc(frame);
+                }
+            }
+
+            build(number) {
+                for (let i = 0; i < number; i++) {
+                    const t = Math.random() * 2 * Math.PI;
+                    const {x, y} = heart_function(t);
+                    this._points.add(`${x},${y}`);
+                }
+
+                const pointsArray = Array.from(this._points);
+                for (const pointStr of pointsArray) {
+                    const [x, y] = pointStr.split(',').map(Number);
+                    for (let i = 0; i < 3; i++) {
+                        const scattered = scatter_inside(x, y, 0.05);
+                        this._edge_diffusion_points.add(`${scattered.x},${scattered.y}`);
+                    }
+                }
+
+                for (let i = 0; i < 10000; i++) {
+                    const randomPoint = pointsArray[Math.floor(Math.random() * pointsArray.length)];
+                    const [x, y] = randomPoint.split(',').map(Number);
+                    const scattered = scatter_inside(x, y, 0.17);
+                    this._center_diffusion_points.add(`${scattered.x},${scattered.y}`);
+                }
+            }
+
+            calc_position(x, y, ratio) {
+                const force = 1 / Math.pow(Math.pow(x - CANVAS_CENTER_X, 2) + Math.pow(y - CANVAS_CENTER_Y, 2), 0.520);
+                const dx = ratio * force * (x - CANVAS_CENTER_X) + (Math.random() > 0.5 ? 1 : -1);
+                const dy = ratio * force * (y - CANVAS_CENTER_Y) + (Math.random() > 0.5 ? 1 : -1);
+                
+                return {
+                    x: x - dx,
+                    y: y - dy
+                };
+            }
+
+            calc(generate_frame) {
+                const ratio = 25 * curve(generate_frame / 10 * Math.PI);
+                
+                const halo_radius = Math.floor(4 + 6 * (1 + curve(generate_frame / 10 * Math.PI)));
+                const halo_number = Math.floor(3000 + 4000 * Math.abs(Math.pow(curve(generate_frame / 10 * Math.PI), 2)));
+                
+                const all_points = [];
+                const heart_halo_point = new Set();
+
+                for (let i = 0; i < halo_number; i++) {
+                    const t = Math.random() * 2 * Math.PI;
+                    let {x, y} = heart_function(t, 11.6);
+                    const shrunk = shrink(x, y, halo_radius);
+                    x = shrunk.x;
+                    y = shrunk.y;
+                    
+                    const pointKey = `${x},${y}`;
+                    if (!heart_halo_point.has(pointKey)) {
+                        heart_halo_point.add(pointKey);
+                        x += Math.random() > 0.5 ? 14 : -14;
+                        y += Math.random() > 0.5 ? 14 : -14;
+                        const size = Math.random() > 0.5 ? 1 : 2;
+                        all_points.push({x, y, size});
+                    }
+                }
+
+                for (const pointStr of this._points) {
+                    const [x, y] = pointStr.split(',').map(Number);
+                    const pos = this.calc_position(x, y, ratio);
+                    const size = Math.floor(Math.random() * 3) + 1;
+                    all_points.push({x: pos.x, y: pos.y, size});
+                }
+
+                for (const pointStr of this._edge_diffusion_points) {
+                    const [x, y] = pointStr.split(',').map(Number);
+                    const pos = this.calc_position(x, y, ratio);
+                    const size = Math.floor(Math.random() * 2) + 1;
+                    all_points.push({x: pos.x, y: pos.y, size});
+                }
+
+                for (const pointStr of this._center_diffusion_points) {
+                    const [x, y] = pointStr.split(',').map(Number);
+                    const pos = this.calc_position(x, y, ratio);
+                    const size = Math.floor(Math.random() * 2) + 1;
+                    all_points.push({x: pos.x, y: pos.y, size});
+                }
+
+                this.all_points[generate_frame] = all_points;
+            }
+
+            render(ctx, render_frame) {
+                const frame_index = render_frame % this.generate_frame;
+                const points = this.all_points[frame_index] || [];
+                
+                ctx.fillStyle = HEART_COLOR;
+                for (const point of points) {
+                    ctx.fillRect(point.x, point.y, point.size, point.size);
+                }
+            }
+        }
+
+        // ============= 绘制函数 =============
+        function draw_starry_background(ctx) {
+            ctx.fillStyle = '#0a0a2a';
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            for (let i = 0; i < 100; i++) {
+                const x = Math.random() * CANVAS_WIDTH;
+                const y = Math.random() * CANVAS_HEIGHT;
+                const star_size = Math.random() > 0.3 ? 1 : 2;
+                const star_colors = ["#ffffff", "#f0f0ff", "#e6e6ff"];
+                const star_color = star_colors[Math.floor(Math.random() * star_colors.length)];
+                
+                ctx.fillStyle = star_color;
+                ctx.beginPath();
+                ctx.arc(x, y, star_size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function draw_top_text_simple(ctx, frame_count) {
+            // === 这里修改：从0.05改为0.02，文字呼吸变慢 ===
+            const alpha = 0.7 + 0.3 * Math.sin(frame_count * 0.02);
+            const white_value = Math.floor(alpha * 255);
+
+            const colors = [
+                `rgb(${white_value}, ${white_value}, ${white_value})`,
+                `rgb(${white_value}, ${Math.floor(white_value * 0.9)}, ${Math.floor(white_value * 0.9)})`,
+                `rgb(${Math.floor(white_value * 0.9)}, ${Math.floor(white_value * 0.9)}, ${white_value})`
+            ];
+
+            const text_color = colors[frame_count % colors.length];
+            
+            ctx.clearRect(0, 0, CANVAS_WIDTH, 150);
+            
+            ctx.fillStyle = text_color;
+            ctx.font = 'bold 36px "Microsoft YaHei", Arial, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText("徐梦琴", CANVAS_CENTER_X, 40);
+            
+            ctx.font = 'bold 28px "Microsoft YaHei", Arial, sans-serif';
+            ctx.fillText("生日快乐", CANVAS_CENTER_X, 95);
+        }
+
+        // ============= 主绘制函数 =============
+        function draw(heart, heart_ctx, text_ctx, render_frame = 0) {
+            heart_ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+            
+            draw_starry_background(heart_ctx);
+            
+            heart.render(heart_ctx, render_frame);
+            
+            draw_top_text_simple(text_ctx, render_frame);
+            
+            // === 这里修改：从160改为300，动画速度变慢 ===
+            setTimeout(() => {
+                draw(heart, heart_ctx, text_ctx, render_frame + 1);
+            }, 500);
+        }
+
+        // ============= 主程序入口 =============
+        function main() {
+            console.log('开始初始化...');
+            
+            const container = document.getElementById('container');
+            const loading = document.getElementById('loading');
+            
+            const heartCanvas = document.createElement('canvas');
+            heartCanvas.id = 'heartCanvas';
+            heartCanvas.width = CANVAS_WIDTH;
+            heartCanvas.height = CANVAS_HEIGHT;
+            heartCanvas.style.zIndex = '1';
+            container.appendChild(heartCanvas);
+            
+            const heartCtx = heartCanvas.getContext('2d');
+            
+            const textCanvas = document.createElement('canvas');
+            textCanvas.id = 'textCanvas';
+            textCanvas.width = CANVAS_WIDTH;
+            textCanvas.height = CANVAS_HEIGHT;
+            textCanvas.style.zIndex = '2';
+            container.appendChild(textCanvas);
+            
+            const textCtx = textCanvas.getContext('2d');
+            
+            loading.style.display = 'none';
+            
+            const heart = new Heart();
+            
+            draw(heart, heartCtx, textCtx, 0);
+        }
+
+        window.addEventListener('load', () => {
+            setTimeout(main, 100);
+        });
+
+    </script>
+</body>
+</html>
