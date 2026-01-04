@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>虞萍 生日快乐 ✨</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0c0c2e 0%, #1a1a3e 50%, #2d1b3e 100%);
+            overflow: hidden;
+            font-family: 'Microsoft YaHei', 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        #container {
+            position: relative;
+            width: 720px;
+            height: 720px;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffddf4;
+            font-size: 24px;
+            text-shadow: 0 0 10px rgba(255, 221, 244, 0.7);
+            z-index: 10;
+        }
+        
+        .message {
+            position: absolute;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
+            color: #fff;
+            font-size: 18px;
+            opacity: 0.8;
+            z-index: 3;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="bgCanvas"></canvas>
+        <canvas id="heartCanvas"></canvas>
+        <canvas id="floatingCanvas"></canvas>
+        <canvas id="particleCanvas"></canvas>
+        <canvas id="textCanvas"></canvas>
+        <div id="loading">专属虞萍的生日惊喜</div>
+        <div class="message">送给特别的人</div>
+    </div>
+
+    <script>
+        // ============= 常量定义 =============
+        const CANVAS_WIDTH = 720;
+        const CANVAS_HEIGHT = 720;
+        const CANVAS_CENTER_X = CANVAS_WIDTH / 2;
+        const CANVAS_CENTER_Y = CANVAS_HEIGHT / 2;
+        
+        // ============= 第二个代码的爱心粒子系统 =============
+        const IMAGE_ENLARGE = 11;
+        const HEART_COLOR = "#ff8ab5"; // 改为粉色系
+
+        // ============= 核心函数 =============
+        function heart_function(t, shrink_ratio = IMAGE_ENLARGE) {
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y = -(15 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+            
+            const scaled_x = x * shrink_ratio;
+            const scaled_y = y * shrink_ratio;
+            
+            return {
+                x: Math.floor(scaled_x + CANVAS_CENTER_X),
+                y: Math.floor(scaled_y + CANVAS_CENTER_Y)
+            };
+        }
+
+        function scatter_inside(x, y, beta = 0.15) {
+            const ratio_x = -beta * Math.log(Math.random());
+            const ratio_y = -beta * Math.log(Math.random());
+            
+            const dx = ratio_x * (x - CANVAS_CENTER_X);
+            const dy = ratio_y * (y - CANVAS_CENTER_Y);
+            
+            return {
+                x: x - dx,
+                y: y - dy
+            };
+        }
+
+        function shrink(x, y, ratio) {
+            const force = -1 / Math.pow(Math.pow(x - CANVAS_CENTER_X, 2) + Math.pow(y - CANVAS_CENTER_Y, 2), 0.6);
+            const dx = ratio * force * (x - CANVAS_CENTER_X);
+            const dy = ratio * force * (y - CANVAS_CENTER_Y);
+            
+            return {
+                x: x - dx,
+                y: y - dy
+            };
+        }
+
+        // ============= 修改这里：让爱心跳动更慢 =============
+        function curve(p) {
+            // 将4改为2，减慢爱心跳动速度
+            return 2 * (2 * Math.sin(2 * p)) / (2 * Math.PI);
+        }
+
+        // ============= Heart类（从第二个代码）修改跳动速度 =============
+        class Heart {
+            constructor(generate_frame = 60) { // 从20改为40，使动画循环更长更慢
+                this._points = new Set();
+                this._edge_diffusion_points = new Set();
+                this._center_diffusion_points = new Set();
+                this.all_points = {};
+                this.generate_frame = generate_frame;
+                this.random_halo = 1000;
+                
+                this.build(2000);
+                
+                for (let frame = 0; frame < generate_frame; frame++) {
+                    this.calc(frame);
+                }
+            }
+
+            build(number) {
+                for (let i = 0; i < number; i++) {
+                    const t = Math.random() * 2 * Math.PI;
+                    const {x, y} = heart_function(t);
+                    this._points.add(`${x},${y}`);
+                }
+
+                const pointsArray = Array.from(this._points);
+                for (const pointStr of pointsArray) {
+                    const [x, y] = pointStr.split(',').map(Number);
+                    for (let i = 0; i < 3; i++) {
+                        const scattered = scatter_inside(x, y, 0.05);
+                        this._edge_diffusion_points.add(`${scattered.x},${scattered.y}`);
+                    }
+                }
+
+                for (let i = 0; i < 10000; i++) {
+                    const randomPoint = pointsArray[Math.floor(Math.random() * pointsArray.length)];
+                    const [x, y] = randomPoint.split(',').map(Number);
+                    const scattered = scatter_inside(x, y, 0.17);
+                    this._center_diffusion_points.add(`${scattered.x},${scattered.y}`);
+                }
+            }
+
+            calc_position(x, y, ratio) {
+                const force = 1 / Math.pow(Math.pow(x - CANVAS_CENTER_X, 2) + Math.pow(y - CANVAS_CENTER_Y, 2), 0.520);
+                const dx = ratio * force * (x - CANVAS_CENTER_X) + (Math.random() > 0.5 ? 1 : -1);
+                const dy = ratio * force * (y - CANVAS_CENTER_Y) + (Math.random() > 0.5 ? 1 : -1);
+                
+                return {
+                    x: x - dx,
+                    y: y - dy
+                };
+            }
+
+            calc(generate_frame) {
+                // 修改这里：减小ratio系数，使粒子运动更慢
+                const ratio = 15 * curve(generate_frame / 10 * Math.PI); // 从25改为18
+                
+                const halo_radius = Math.floor(4 + 6 * (1 + curve(generate_frame / 10 * Math.PI)));
+                const halo_number = Math.floor(3000 + 4000 * Math.abs(Math.pow(curve(generate_frame / 10 * Math.PI), 2)));
+                
+                const all_points = [];
+                const heart_halo_point = new Set();
+
+                for (let i = 0; i < halo_number; i++) {
+                    const t = Math.random() * 2 * Math.PI;
+                    let {x, y} = heart_function(t, 11.6);
+                    const shrunk = shrink(x, y, halo_radius);
+                    x = shrunk.x;
+                    y = shrunk.y;
+                    
+                    const pointKey = `${x},${y}`;
+                    if (!heart_halo_point.has(pointKey)) {
+                        heart_halo_point.add(pointKey);
+                        // 减小移动距离，使粒子跳动更柔和
+                        x += Math.random() > 0.5 ? 10 : -10; // 从14改为10
+                        y += Math.random() > 0.5 ? 10 : -10; // 从14改为10
+                        const size = Math.random() > 0.5 ? 1 : 2;
+                        all_points.push({x, y, size});
+                    }
+                }
+
+                for (const pointStr of this._points) {
+                    const [x, y] = pointStr.split(',').map(Number);
+                    const pos = this.calc_position(x, y, ratio);
+                    const size = Math.floor(Math.random() * 3) + 1;
+                    all_points.push({x: pos.x, y: pos.y, size});
+                }
+
+                for (const pointStr of this._edge_diffusion_points) {
+                    const [x, y] = pointStr.split(',').map(Number);
+                    const pos = this.calc_position(x, y, ratio);
+                    const size = Math.floor(Math.random() * 2) + 1;
+                    all_points.push({x: pos.x, y: pos.y, size});
+                }
+
+                for (const pointStr of this._center_diffusion_points) {
+                    const [x, y] = pointStr.split(',').map(Number);
+                    const pos = this.calc_position(x, y, ratio);
+                    const size = Math.floor(Math.random() * 2) + 1;
+                    all_points.push({x: pos.x, y: pos.y, size});
+                }
+
+                this.all_points[generate_frame] = all_points;
+            }
+
+            render(ctx, render_frame) {
+                const frame_index = render_frame % this.generate_frame;
+                const points = this.all_points[frame_index] || [];
+                
+                ctx.fillStyle = HEART_COLOR;
+                for (const point of points) {
+                    ctx.fillRect(point.x, point.y, point.size, point.size);
+                }
+            }
+        }
+
+        // ============= 新的漂浮粒子爱心类 =============
+        class ParticleHeart {
+            constructor() {
+                this.reset();
+                this.scale = Math.random() * 4 + 6; // 爱心大小
+                this.particles = [];
+                this.initParticles();
+                
+                // 运动参数
+                this.speed = Math.random() * 0.3 + 0.1; // 漂浮速度
+                this.floatSpeed = Math.random() * 0.01 + 0.005;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = Math.random() * 0.008 - 0.004;
+                this.pulseSpeed = Math.random() * 0.03 + 0.01;
+                this.pulsePhase = Math.random() * Math.PI * 2;
+            }
+
+            reset() {
+                this.x = Math.random() * CANVAS_WIDTH;
+                this.y = Math.random() * CANVAS_HEIGHT;
+                this.life = Math.random() * 0.8 + 0.2;
+                this.decay = Math.random() * 0.001 + 0.0005; // 减慢消失速度
+                this.color = this.getRandomPinkColor();
+                this.currentScale = this.scale;
+            }
+
+            getRandomPinkColor() {
+                const pinkColors = [
+                    "#ff8ab5", "#ffa8cd", "#ffc6e6", 
+                    "#ffd4ec", "#ffb8d9", "#ff99cc"
+                ];
+                return pinkColors[Math.floor(Math.random() * pinkColors.length)];
+            }
+
+            initParticles() {
+                // 创建粒子组成的爱心
+                const particleCount = Math.floor(this.scale * 8);
+                for (let i = 0; i < particleCount; i++) {
+                    const t = (i / particleCount) * Math.PI * 2;
+                    const heartPos = this.getHeartPosition(t);
+                    
+                    this.particles.push({
+                        baseX: heartPos.x,
+                        baseY: heartPos.y,
+                        x: heartPos.x,
+                        y: heartPos.y,
+                        size: Math.random() * 1.5 + 0.8,
+                        color: this.getRandomPinkColor(),
+                        offsetX: 0,
+                        offsetY: 0,
+                        offsetSpeed: Math.random() * 0.02 + 0.01,
+                        offsetPhase: Math.random() * Math.PI * 2,
+                        pulseSpeed: Math.random() * 0.04 + 0.02,
+                        pulsePhase: Math.random() * Math.PI * 2
+                    });
+                }
+            }
+
+            getHeartPosition(t) {
+                const x = 16 * Math.pow(Math.sin(t), 3);
+                const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+                return {
+                    x: x * this.scale * 0.2,
+                    y: y * this.scale * 0.2
+                };
+            }
+
+            update(frameCount) {
+                // 整体漂浮
+                this.x += Math.sin(frameCount * this.floatSpeed) * 0.3;
+                this.y -= this.speed * 0.15;
+                this.y += Math.sin(frameCount * this.floatSpeed * 1.5) * 0.4;
+                this.rotation += this.rotationSpeed;
+                
+                // 脉动效果
+                this.currentScale = this.scale + Math.sin(frameCount * this.pulseSpeed + this.pulsePhase) * 0.8;
+                
+                // 生命值减少
+                this.life -= this.decay;
+                
+                // 更新所有粒子
+                this.particles.forEach(particle => {
+                    const offsetAmount = 1.2;
+                    particle.offsetX = Math.sin(frameCount * particle.offsetSpeed + particle.offsetPhase) * offsetAmount;
+                    particle.offsetY = Math.cos(frameCount * particle.offsetSpeed * 1.3 + particle.offsetPhase) * offsetAmount;
+                    
+                    // 计算粒子位置（考虑爱心缩放和旋转）
+                    const heartPos = this.getHeartPosition(
+                        Math.atan2(particle.baseY, particle.baseX) + Math.PI
+                    );
+                    particle.x = heartPos.x * (this.currentScale / this.scale) + particle.offsetX;
+                    particle.y = heartPos.y * (this.currentScale / this.scale) + particle.offsetY;
+                    
+                    // 粒子大小脉动
+                    particle.currentSize = particle.size + Math.sin(frameCount * particle.pulseSpeed + particle.pulsePhase) * 0.3;
+                });
+                
+                // 如果超出边界或生命结束，重置
+                if (this.y < -80 || this.life <= 0) {
+                    this.reset();
+                    this.y = CANVAS_HEIGHT + 80;
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = this.life * 0.6;
+                
+                // 绘制所有粒子
+                this.particles.forEach(particle => {
+                    ctx.fillStyle = particle.color;
+                    ctx.beginPath();
+                    ctx.arc(particle.x, particle.y, particle.currentSize, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // 粒子发光效果
+                    ctx.shadowColor = particle.color;
+                    ctx.shadowBlur = 8;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                });
+                
+                ctx.restore();
+            }
+        }
+
+        // ============= 第一个代码的绘制函数 =============
+        function drawGradientBackground(ctx) {
+            const gradient = ctx.createRadialGradient(
+                CANVAS_CENTER_X, CANVAS_CENTER_Y, 100,
+                CANVAS_CENTER_X, CANVAS_CENTER_Y, 400
+            );
+            gradient.addColorStop(0, '#1a0b2e');
+            gradient.addColorStop(0.5, '#0c0c2e');
+            gradient.addColorStop(1, '#000015');
+            
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        }
+
+        function drawStarrySky(ctx, frameCount) {
+            // 绘制闪烁的星星（从第一个代码）
+            for (let i = 0; i < 150; i++) {
+                const x = (i * 97) % CANVAS_WIDTH;
+                const y = (i * 137) % CANVAS_HEIGHT;
+                const size = Math.sin(frameCount * 0.01 + i) * 0.5 + 1;
+                const opacity = 0.3 + Math.sin(frameCount * 0.02 + i * 2) * 0.2;
+                
+                ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawFloatingText(ctx, frameCount) {
+            const texts = ["虞萍", "生日快乐"];
+            
+            // 修改文字位置，为爱心腾出空间
+            texts.forEach((text, index) => {
+                const yPos = 70 + index * 90; // 向上移动
+                const floatOffset = Math.sin(frameCount * 0.015 + index) * 8; // 减慢浮动速度
+                
+                // 文字发光效果
+                const HEART_COLORS = ["#ff6b9d", "#ff8ab5", "#ffa8cd"];
+                ctx.shadowColor = HEART_COLORS[index % HEART_COLORS.length];
+                ctx.shadowBlur = 20;
+                
+                // 渐变文字
+                const gradient = ctx.createLinearGradient(
+                    CANVAS_CENTER_X - 100, yPos,
+                    CANVAS_CENTER_X + 100, yPos
+                );
+                gradient.addColorStop(0, "#ff6b9d");
+                gradient.addColorStop(0.5, "#ffa8cd");
+                gradient.addColorStop(1, "#ffe4ff");
+                
+                ctx.fillStyle = gradient;
+                ctx.font = `bold ${index === 0 ? 52 : 38}px "Microsoft YaHei", Arial, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                ctx.fillText(text, CANVAS_CENTER_X, yPos + floatOffset);
+                
+                // 重置阴影
+                ctx.shadowBlur = 0;
+                
+                // 描边
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.strokeText(text, CANVAS_CENTER_X, yPos + floatOffset);
+            });
+        }
+
+        function drawGlitterEffects(ctx, frameCount) {
+            // 绘制闪烁的光点（减慢速度）
+            for (let i = 0; i < 20; i++) {
+                const angle = frameCount * 0.005 + i * Math.PI / 10; // 减慢旋转速度
+                const radius = 200 + Math.sin(frameCount * 0.003 + i) * 50; // 减慢半径变化
+                const x = CANVAS_CENTER_X + Math.cos(angle) * radius;
+                const y = CANVAS_CENTER_Y + Math.sin(angle) * radius;
+                const size = Math.sin(frameCount * 0.02 + i) * 2 + 2; // 减慢大小变化
+                
+                const gradient = ctx.createRadialGradient(x, y, 0, x, y, size * 2);
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 0.8)');
+                gradient.addColorStop(0.5, 'rgba(255, 200, 255, 0.4)');
+                gradient.addColorStop(1, 'rgba(255, 200, 255, 0)');
+                
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(x, y, size * 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // ============= 漂浮小蛋糕类 =============
+        class FloatingCake {
+            constructor() {
+                this.reset();
+                this.scale = Math.random() * 4 + 3;
+                this.speed = Math.random() * 0.2 + 0.1; // 减慢漂浮速度
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = Math.random() * 0.01 - 0.005; // 减慢旋转速度
+                this.floatHeight = Math.random() * 8 + 4;
+                this.floatSpeed = Math.random() * 0.01 + 0.005; // 减慢浮动速度
+                this.candleCount = Math.floor(Math.random() * 3) + 1;
+                this.candleColor = ["#ffcc00", "#ff9900", "#ff6600"][Math.floor(Math.random() * 3)];
+                this.cakeColor = ["#ff99cc", "#ff77aa", "#ff5599"][Math.floor(Math.random() * 3)];
+                this.icingColor = ["#ffddf4", "#ffccee", "#ffbbdd"][Math.floor(Math.random() * 3)];
+            }
+
+            reset() {
+                this.x = Math.random() * CANVAS_WIDTH;
+                this.y = Math.random() * CANVAS_HEIGHT;
+                this.life = Math.random() * 0.8 + 0.2;
+                this.decay = Math.random() * 0.001 + 0.0005; // 减慢消失速度
+            }
+
+            update(frameCount) {
+                this.x += Math.sin(frameCount * this.floatSpeed) * 0.2; // 减慢左右移动
+                this.y -= this.speed * 0.15; // 减慢上升速度
+                this.y += Math.cos(frameCount * this.floatSpeed * 1.3) * 0.3; // 减慢上下浮动
+                this.rotation += this.rotationSpeed;
+                this.life -= this.decay;
+                
+                if (this.y < -80 || this.life <= 0) {
+                    this.reset();
+                    this.y = CANVAS_HEIGHT + 80;
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = this.life * 0.7; // 稍微降低透明度
+                
+                ctx.fillStyle = this.cakeColor;
+                ctx.fillRect(-this.scale * 1.5, -this.scale, this.scale * 3, this.scale * 2);
+                
+                ctx.fillStyle = this.icingColor;
+                ctx.beginPath();
+                ctx.moveTo(-this.scale * 1.3, -this.scale);
+                for (let i = -this.scale * 1.3; i <= this.scale * 1.3; i += 0.5) {
+                    const y = -this.scale + Math.sin(i * 0.5) * 1.5;
+                    ctx.lineTo(i, y);
+                }
+                ctx.lineTo(this.scale * 1.3, -this.scale);
+                ctx.closePath();
+                ctx.fill();
+                
+                const candleSpacing = (this.scale * 2.5) / (this.candleCount + 1);
+                for (let i = 1; i <= this.candleCount; i++) {
+                    const candleX = -this.scale * 1.25 + i * candleSpacing;
+                    
+                    ctx.fillStyle = this.candleColor;
+                    ctx.fillRect(candleX - 1, -this.scale - 10, 2, 10);
+                    
+                    ctx.fillStyle = "#ff9900";
+                    ctx.beginPath();
+                    ctx.arc(candleX, -this.scale - 12, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    const flameGradient = ctx.createRadialGradient(
+                        candleX, -this.scale - 12, 0,
+                        candleX, -this.scale - 12, 5
+                    );
+                    flameGradient.addColorStop(0, "rgba(255, 153, 0, 0.8)");
+                    flameGradient.addColorStop(1, "rgba(255, 153, 0, 0)");
+                    
+                    ctx.fillStyle = flameGradient;
+                    ctx.beginPath();
+                    ctx.arc(candleX, -this.scale - 12, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                ctx.strokeStyle = "#ff77aa";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(-this.scale * 1.5, -this.scale, this.scale * 3, this.scale * 2);
+                
+                ctx.restore();
+            }
+        }
+
+        // ============= 漂浮元素管理器 =============
+        class FloatingElements {
+            constructor() {
+                this.particleHearts = []; // 粒子爱心数组
+                this.cakes = [];
+                this.init();
+            }
+
+            init() {
+                // 创建漂浮的粒子爱心（8个）
+                for (let i = 0; i < 8; i++) {
+                    this.particleHearts.push(new ParticleHeart());
+                }
+                
+                // 创建漂浮小蛋糕（6个）
+                for (let i = 0; i < 6; i++) {
+                    this.cakes.push(new FloatingCake());
+                }
+            }
+
+            update(frameCount) {
+                // 更新所有粒子爱心
+                this.particleHearts.forEach(heart => {
+                    heart.update(frameCount);
+                });
+                
+                // 更新所有小蛋糕
+                this.cakes.forEach(cake => {
+                    cake.update(frameCount);
+                });
+            }
+
+            draw(ctx) {
+                // 绘制所有粒子爱心
+                this.particleHearts.forEach(heart => {
+                    heart.draw(ctx);
+                });
+                
+                // 绘制所有小蛋糕
+                this.cakes.forEach(cake => {
+                    cake.draw(ctx);
+                });
+            }
+        }
+
+        // ============= 主绘制函数 =============
+        let heart;
+        let floatingElements;
+        let frameCount = 0;
+
+        function init() {
+            console.log('初始化结合效果...');
+            
+            const container = document.getElementById('container');
+            const loading = document.getElementById('loading');
+            
+            // 创建背景画布
+            const bgCanvas = document.createElement('canvas');
+            bgCanvas.id = 'bgCanvas';
+            bgCanvas.width = CANVAS_WIDTH;
+            bgCanvas.height = CANVAS_HEIGHT;
+            container.appendChild(bgCanvas);
+            const bgCtx = bgCanvas.getContext('2d');
+            
+            // 创建爱心画布（用于第二个代码的粒子爱心）
+            const heartCanvas = document.createElement('canvas');
+            heartCanvas.id = 'heartCanvas';
+            heartCanvas.width = CANVAS_WIDTH;
+            heartCanvas.height = CANVAS_HEIGHT;
+            heartCanvas.style.zIndex = '2';
+            container.appendChild(heartCanvas);
+            const heartCtx = heartCanvas.getContext('2d');
+            
+            // 创建漂浮元素画布
+            const floatingCanvas = document.createElement('canvas');
+            floatingCanvas.id = 'floatingCanvas';
+            floatingCanvas.width = CANVAS_WIDTH;
+            floatingCanvas.height = CANVAS_HEIGHT;
+            floatingCanvas.style.zIndex = '3';
+            container.appendChild(floatingCanvas);
+            const floatingCtx = floatingCanvas.getContext('2d');
+            
+            // 创建粒子效果画布（用于第一个代码的闪烁光点）
+            const particleCanvas = document.createElement('canvas');
+            particleCanvas.id = 'particleCanvas';
+            particleCanvas.width = CANVAS_WIDTH;
+            particleCanvas.height = CANVAS_HEIGHT;
+            particleCanvas.style.zIndex = '4';
+            container.appendChild(particleCanvas);
+            const particleCtx = particleCanvas.getContext('2d');
+            
+            // 创建文字画布
+            const textCanvas = document.createElement('canvas');
+            textCanvas.id = 'textCanvas';
+            textCanvas.width = CANVAS_WIDTH;
+            textCanvas.height = CANVAS_HEIGHT;
+            textCanvas.style.zIndex = '5';
+            container.appendChild(textCanvas);
+            const textCtx = textCanvas.getContext('2d');
+            
+            loading.style.display = 'none';
+            
+            // 初始化第二个代码的中心粒子爱心（现在跳动更慢）
+            heart = new Heart();
+            
+            // 初始化漂浮元素（包含新的粒子爱心和小蛋糕）
+            floatingElements = new FloatingElements();
+            
+            // 动画循环
+            function animate() {
+                frameCount++;
+                
+                // 绘制背景（从第一个代码）
+                drawGradientBackground(bgCtx);
+                drawStarrySky(bgCtx, frameCount);
+                
+                // 清空爱心画布并绘制第二个代码的中心粒子爱心
+                heartCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                heart.render(heartCtx, frameCount);
+                
+                // 清空并绘制漂浮元素
+                floatingCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                floatingElements.update(frameCount);
+                floatingElements.draw(floatingCtx);
+                
+                // 清空并绘制粒子效果（从第一个代码）
+                particleCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                drawGlitterEffects(particleCtx, frameCount);
+                
+                // 清空并绘制文字（从第一个代码）
+                textCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+                drawFloatingText(textCtx, frameCount);
+                
+                requestAnimationFrame(animate);
+            }
+            
+            animate();
+        }
+
+        window.addEventListener('load', () => {
+            setTimeout(init, 500);
+        });
+    </script>
+</body>
+</html>
